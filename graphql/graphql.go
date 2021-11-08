@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"time"
 
@@ -16,6 +17,20 @@ import (
 type Client struct {
 	url        string // GraphQL server URL.
 	httpClient *http.Client
+}
+
+type Extensions struct {
+	Cost *Cost `json:"cost"`
+}
+
+type Cost struct {
+	RequestedQueryCost float64 `json:"requestedQueryCost"`
+	ActualQueryCost    float64 `json:"actualQueryCost"`
+	ThrottleStatus     struct {
+		MaximumAvailable   float64 `json:"maximumAvailable"`
+		CurrentlyAvailable float64 `json:"currentlyAvailable"`
+		RestoreRate        float64 `json:"restoreRate"`
+	} `json:"throttleStatus"`
 }
 
 // NewClient creates a GraphQL client targeting the specified GraphQL server URL.
@@ -81,28 +96,21 @@ func (c *Client) do(ctx context.Context, query string, variables map[string]inte
 	var out struct {
 		Data       *json.RawMessage
 		Errors     errors
-		Extensions interface{} // Unused.
+		Extensions *Extensions `json:"extensions"` // Unused.
 	}
 	err = json.NewDecoder(resp.Body).Decode(&out)
 
-	if len(out.Errors) > 0 {
+	if len(out.Errors) > 0 && out.Extensions != nil {
 		if out.Errors[0].Message == "Throttled" {
-			b, err := json.Marshal(out.Extensions)
-			if err != nil {
-				return err
-			}
-			var extensions dict
-			err = json.Unmarshal(b, &extensions)
-			if err != nil {
-				return err
-			}
-			requestedQueryCost := extensions.d("cost").s("requestedQueryCost")
-			throttleStatus := extensions.d("cost").d("throttleStatus")
-			currentlyAvailable := throttleStatus.s("currentlyAvailable")
-			restoreRate := throttleStatus.s("restoreRate")
-			if currentlyAvailable < requestedQueryCost {
-				timeSleep := int((requestedQueryCost - currentlyAvailable) / restoreRate)
-				time.Sleep(time.Duration(timeSleep) * time.Second)
+			if out.Extensions.Cost != nil {
+				requestedQueryCost := out.Extensions.Cost.RequestedQueryCost
+				throttleStatus := out.Extensions.Cost.ThrottleStatus
+				currentlyAvailable := throttleStatus.CurrentlyAvailable
+				restoreRate := throttleStatus.RestoreRate
+				if currentlyAvailable < requestedQueryCost {
+					timeSleep := math.Ceil((requestedQueryCost - currentlyAvailable) / restoreRate)
+					time.Sleep(time.Duration(timeSleep) * time.Second)
+				}
 			}
 		}
 	}
@@ -123,27 +131,6 @@ func (c *Client) do(ctx context.Context, query string, variables map[string]inte
 		return out.Errors
 	}
 	return nil
-}
-
-// Accessing Nested Map of Type map[string]interface{} in Golang
-// struct is the best option, but if you insist,
-// you can add a type declaration for a map, then you can add methods to help with the type assertions:
-type dict map[string]interface{}
-
-// convert first index to map that has interface value.
-func (d dict) d(k string) dict {
-	if d[k] == nil {
-		return nil
-	}
-	return d[k].(map[string]interface{})
-}
-
-// convert the item value to string
-func (d dict) s(k string) float64 {
-	if d[k] == nil {
-		return 0
-	}
-	return d[k].(float64)
 }
 
 // errors represents the "errors" array in a response from a GraphQL server.
