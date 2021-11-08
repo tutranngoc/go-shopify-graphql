@@ -149,7 +149,7 @@ func TestSleepWhenRateLimitQuery(t *testing.T) {
 		{
 			name: "throtled_query",
 			server: httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if timeNow.Sub(time.Now())-time.Second < 5 {
+				if time.Since(timeNow) < 7200*time.Millisecond {
 					w.WriteHeader(http.StatusOK)
 					w.Write([]byte(`{
 					   "errors":[
@@ -159,7 +159,7 @@ func TestSleepWhenRateLimitQuery(t *testing.T) {
 					   ],
 					   "extensions":{
 						  "cost":{
-							 "requestedQueryCost":452,
+							 "requestedQueryCost":562,
 							 "actualQueryCost":null,
 							 "throttleStatus":{
 								"maximumAvailable":1000.0,
@@ -178,7 +178,7 @@ func TestSleepWhenRateLimitQuery(t *testing.T) {
 				Name:        "kyle",
 				Description: "novice gopher",
 			},
-			Duration:    5 * time.Second,
+			Duration:    7200 * time.Millisecond,
 			expectedErr: nil,
 		},
 	}
@@ -191,8 +191,16 @@ func TestSleepWhenRateLimitQuery(t *testing.T) {
 		t1 := time.Now()
 		_ = c.do(context.Background(), tc.name, m, v)
 		t2 := time.Now()
-		if t1.Sub(t2)-tc.Duration < 1 {
-			t.Log("too much time")
+		fmt.Println(t1)
+		fmt.Println(t2)
+		fmt.Println(t2.Sub(t1))
+		fmt.Println(tc.Duration)
+		fmt.Println(t2.Sub(t1) - tc.Duration)
+		if t2.Sub(t1)-tc.Duration > 1000*time.Millisecond {
+			t.Error("too much time")
+		}
+		if t2.Sub(t1)-tc.Duration < 0 {
+			t.Error("sleep not enough")
 		}
 	})
 
