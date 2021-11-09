@@ -99,7 +99,6 @@ func (c *Client) do(ctx context.Context, query string, variables map[string]inte
 		Extensions *Extensions `json:"extensions"` // Unused.
 	}
 	err = json.NewDecoder(resp.Body).Decode(&out)
-
 	if len(out.Errors) > 0 && out.Extensions != nil {
 		if out.Errors[0].Message == "Throttled" {
 			if out.Extensions.Cost != nil {
@@ -110,6 +109,7 @@ func (c *Client) do(ctx context.Context, query string, variables map[string]inte
 				if currentlyAvailable < requestedQueryCost {
 					timeSleep := math.Ceil((requestedQueryCost - currentlyAvailable) / restoreRate)
 					time.Sleep(time.Duration(timeSleep) * time.Second)
+					c.do(ctx, query, variables, v)
 				}
 			}
 		}
