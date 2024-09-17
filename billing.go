@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gempages/go-shopify-graphql-model/graph/model"
+
 	"github.com/gempages/go-shopify-graphql/graphql"
 )
 
@@ -13,6 +15,8 @@ type BillingService interface {
 	AppSubscriptionCancel(ctx context.Context, id graphql.ID, prorate graphql.Boolean) (*AppSubscriptionCancelResult, error)
 	AppSubscriptionCreate(ctx context.Context, input *AppSubscriptionCreateInput) (*AppSubscriptionCreateResult, error)
 	AppSubscriptionTrialExtend(ctx context.Context, input *AppSubscriptionTrailExtendInput) (*AppSubscriptionTrailExtendResult, error)
+	AppSubscriptionLineItemUpdate(ctx context.Context, id string, cappedAmount model.MoneyInput) (*model.AppSubscriptionLineItemUpdatePayload, error)
+	AppUsageRecordCreate(ctx context.Context, input *model.AppUsageRecord) (*model.AppUsageRecordCreatePayload, error)
 }
 
 type BillingServiceOp struct {
@@ -264,4 +268,136 @@ func (instance *BillingServiceOp) AppSubscriptionCreate(ctx context.Context, inp
 	}
 
 	return &m.AppSubscriptionCreateResult, nil
+}
+
+type mutationAppSubscriptionLineItemUpdate struct {
+	AppSubscriptionLineItemUpdatePayload model.AppSubscriptionLineItemUpdatePayload `json:"appSubscriptionLineItemUpdate"`
+}
+
+var appSubscriptionLineItemUpdate = `
+mutation appSubscriptionLineItemUpdate($cappedAmount: MoneyInput!, $id: ID!) {
+  appSubscriptionLineItemUpdate(cappedAmount: $cappedAmount, id: $id) {
+    userErrors {
+      field
+      message
+    }
+    confirmationUrl
+    appSubscription {
+      createdAt
+      currentPeriodEnd
+      id
+      name
+      returnUrl
+      status
+      test
+      trialDays
+    }
+  }
+}
+`
+
+func (instance *BillingServiceOp) AppSubscriptionLineItemUpdate(ctx context.Context, id string, cappedAmount model.MoneyInput) (*model.AppSubscriptionLineItemUpdatePayload, error) {
+	m := mutationAppSubscriptionLineItemUpdate{}
+	vars := map[string]interface{}{
+		"id":           id,
+		"cappedAmount": cappedAmount,
+	}
+	err := instance.client.gql.MutateString(ctx, appSubscriptionLineItemUpdate, vars, &m)
+	if err != nil {
+		return nil, err
+	}
+	if len(m.AppSubscriptionLineItemUpdatePayload.UserErrors) > 0 {
+		return nil, fmt.Errorf("%+v", m.AppSubscriptionLineItemUpdatePayload.UserErrors)
+	}
+	return &m.AppSubscriptionLineItemUpdatePayload, nil
+}
+
+type mutationAppUsageRecordCreate struct {
+	AppUsageRecordCreatePayload model.AppUsageRecordCreatePayload `json:"appUsageRecordCreate"`
+}
+
+var appUsageRecordCreate = `
+mutation appUsageRecordCreate(
+  $description: String!
+  $price: MoneyInput!
+  $subscriptionLineItemId: ID!
+  $idempotencyKey: String
+) {
+  appUsageRecordCreate(
+    description: $description
+    price: $price
+    subscriptionLineItemId: $subscriptionLineItemId
+    idempotencyKey: $idempotencyKey
+  ) {
+    userErrors {
+      field
+      message
+    }
+    appUsageRecord {
+      id
+      idempotencyKey
+      subscriptionLineItem {
+        id
+        plan {
+          pricingDetails {
+            ... on AppRecurringPricing {
+              __typename
+              discount {
+                durationLimitInIntervals
+                priceAfterDiscount {
+                  amount
+                  currencyCode
+                }
+                value {
+                  ... on AppSubscriptionDiscountAmount {
+                    amount {
+                      amount
+                      currencyCode
+                    }
+                  }
+                }
+              }
+              price {
+                amount
+                currencyCode
+              }
+              interval
+            }
+            ... on AppUsagePricing {
+              __typename
+              balanceUsed {
+                amount
+                currencyCode
+              }
+              cappedAmount {
+                amount
+                currencyCode
+              }
+              interval
+              terms
+            }
+          }
+        }
+      }
+    }
+  }
+}
+`
+
+func (instance *BillingServiceOp) AppUsageRecordCreate(ctx context.Context, input *model.AppUsageRecord) (*model.AppUsageRecordCreatePayload, error) {
+	m := mutationAppUsageRecordCreate{}
+	vars := map[string]interface{}{
+		"description":            input.Description,
+		"idempotencyKey":         input.IdempotencyKey,
+		"price":                  input.Price,
+		"subscriptionLineItemId": input.ID,
+	}
+	err := instance.client.gql.MutateString(ctx, appUsageRecordCreate, vars, &m)
+	if err != nil {
+		return nil, err
+	}
+	if len(m.AppUsageRecordCreatePayload.UserErrors) > 0 {
+		return nil, fmt.Errorf("%+v", m.AppUsageRecordCreatePayload.UserErrors)
+	}
+	return &m.AppUsageRecordCreatePayload, nil
 }

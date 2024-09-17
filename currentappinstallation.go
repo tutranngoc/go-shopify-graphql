@@ -17,18 +17,56 @@ type AppServiceOp struct {
 var _ AppService = &AppServiceOp{}
 
 const queryCurrentAppInstallation = `
-	query {
-		currentAppInstallation {
-			id
-			app {
-				id
-				title
-				embedded
-				isPostPurchaseAppInUse
-				developerType
-			}
-		}
+query {
+  currentAppInstallation {
+	id
+	app {
+	  id
+	  title
+	  embedded
+	  isPostPurchaseAppInUse
+	  developerType
 	}
+	activeSubscriptions {
+	  createdAt
+	  currentPeriodEnd
+	  id
+	  name
+	  returnUrl
+	  status
+	  test
+	  trialDays
+	  lineItems {
+		id
+		plan {
+		  pricingDetails {
+			... on AppRecurringPricing {
+              __typename
+			  price {
+				amount
+				currencyCode
+			  }
+			  interval
+			}
+			... on AppUsagePricing {
+			  __typename
+			  balanceUsed {
+				amount
+				currencyCode
+			  }
+			  cappedAmount {
+				amount
+				currencyCode
+			  }
+			  interval
+			  terms
+			}
+		  }
+		}
+	  }
+	}
+  }
+}
 `
 
 func (a *AppServiceOp) GetCurrentAppInstallation(ctx context.Context) (*model.AppInstallation, error) {
