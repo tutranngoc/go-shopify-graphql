@@ -316,7 +316,47 @@ type mutationAppUsageRecordCreate struct {
 	AppUsageRecordCreatePayload model.AppUsageRecordCreatePayload `json:"appUsageRecordCreate"`
 }
 
-var appUsageRecordCreate = `
+var appSubscriptionLineItemPlan = fmt.Sprintf(`
+  plan {
+    %s
+  }
+`, pricingDetails)
+
+var pricingDetails = fmt.Sprintf(`
+  pricingDetails {
+	%s
+	%s
+  }
+`, appRecurringPricing, appUsagePricing)
+
+var appRecurringPricing = `
+  ... on AppRecurringPricing {
+    __typename
+    price {
+	  amount
+	  currencyCode
+    }
+    interval
+  }
+`
+
+var appUsagePricing = `
+  ... on AppUsagePricing {
+    __typename
+    balanceUsed {
+	  amount
+	  currencyCode
+    }
+    cappedAmount {
+	  amount
+	  currencyCode
+    }
+    interval
+    terms
+  }
+`
+
+var appUsageRecordCreate = fmt.Sprintf(`
 mutation appUsageRecordCreate(
   $description: String!
   $price: MoneyInput!
@@ -338,51 +378,12 @@ mutation appUsageRecordCreate(
       idempotencyKey
       subscriptionLineItem {
         id
-        plan {
-          pricingDetails {
-            ... on AppRecurringPricing {
-              __typename
-              discount {
-                durationLimitInIntervals
-                priceAfterDiscount {
-                  amount
-                  currencyCode
-                }
-                value {
-                  ... on AppSubscriptionDiscountAmount {
-                    amount {
-                      amount
-                      currencyCode
-                    }
-                  }
-                }
-              }
-              price {
-                amount
-                currencyCode
-              }
-              interval
-            }
-            ... on AppUsagePricing {
-              __typename
-              balanceUsed {
-                amount
-                currencyCode
-              }
-              cappedAmount {
-                amount
-                currencyCode
-              }
-              interval
-              terms
-            }
-          }
-        }
+		%s
       }
     }
   }
 }
-`
+`, appSubscriptionLineItemPlan)
 
 func (instance *BillingServiceOp) AppUsageRecordCreate(ctx context.Context, input *model.AppUsageRecord) (*model.AppUsageRecordCreatePayload, error) {
 	m := mutationAppUsageRecordCreate{}
